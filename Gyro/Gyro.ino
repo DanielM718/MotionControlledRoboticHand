@@ -8,26 +8,12 @@
     #include "Wire.h"
 #endif
 
-// these are the adafruit graphics and OLED library so we can actually display something on the screen
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-// reset pin is not used in my OLED model but it is required to use the library defined above
-#define OLED_RESET 14
-// this will represent the OLED in the program
-Adafruit_SSD1306 display(OLED_RESET);
-// This is the I2C address for the OLED display
-#define SCREEN_ADDRESS 0x3C
-
 // class default I2C address is 0x68
 MPU6050 mpu(0x68);
-
-#define OUTPUT_READABLE_QUATERNION
 
 #define OUTPUT_READABLE_EULER
 
 #define OUTPUT_READABLE_YAWPITCHROLL
-
-#define OUTPUT_READABLE_REALACCEL
 
 
 #define INTERRUPT_PIN 19  // use pin 2 on Arduino Uno & most boards
@@ -77,10 +63,9 @@ void setup() {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;); // Don't proceed, loop forever
   }
-  display.display();
    // Pause for 2 seconds
   // Clear the buffer
-  display.clearDisplay();
+
   delay(5000);
   // join I2C bus (I2Cdev library doesn't do this automatically)
   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -181,19 +166,6 @@ void loop() {
       Serial.print(q.y);
       Serial.print("\t");
       Serial.println(q.z);
-
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(0,0);
-      display.print(F("quat\t"));
-      display.print(q.w);
-      display.print("\t");
-      display.print(q.x);
-      display.print("\t");
-      display.println(q.y);
-      display.println(q.z);
-      display.display();
     #endif
 
     #ifdef OUTPUT_READABLE_EULER
@@ -206,18 +178,6 @@ void loop() {
       Serial.print(euler[1] * 180/M_PI);
       Serial.print("\t");
       Serial.println(euler[2] * 180/M_PI);
-
-      // display.clearDisplay();
-      // display.setTextSize(1);
-      // display.setTextColor(SSD1306_WHITE);
-      // display.setCursor(0,0);
-      // display.print(F("ypr\t"));
-      // display.print(euler[0] * 180/M_PI);
-      // display.print("\t");
-      // display.print(euler[1] * 180/M_PI);
-      // display.print("\t");
-      // display.println(euler[2] * 180/M_PI);
-      // display.display();
     #endif
 
     #ifdef OUTPUT_READABLE_YAWPITCHROLL
@@ -231,17 +191,6 @@ void loop() {
       Serial.print(ypr[1] * 180/M_PI);
       Serial.print("\t");
       Serial.println(ypr[2] * 180/M_PI);
-
-      // display.setTextSize(1);
-      // display.setTextColor(SSD1306_WHITE);
-      // display.setCursor(0,10);
-      // display.print(F("ypr\t"));
-      // display.print(ypr[0] * 180/M_PI);
-      // display.print("\t");
-      // display.print(ypr[1] * 180/M_PI);
-      // display.print("\t");
-      // display.println(ypr[2] * 180/M_PI);
-      // display.display();
     #endif
 
     #ifdef OUTPUT_READABLE_REALACCEL
@@ -256,18 +205,6 @@ void loop() {
       Serial.print(aaReal.y);
       Serial.print("\t");
       Serial.println(aaReal.z);
-
-      // display.clearDisplay();
-      // display.setTextSize(1);
-      // display.setTextColor(SSD1306_WHITE);
-      // display.setCursor(0,0);
-      // display.print(F("areal\t"));
-      // display.print(aaReal.x);
-      // display.print("\n");
-      // display.print(aaReal.y);
-      // display.print("\n");
-      // display.print(aaReal.z);
-      // display.display();
     #endif
     // blink LED to indicate activity
     blinkState = !blinkState;
