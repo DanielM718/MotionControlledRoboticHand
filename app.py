@@ -5,8 +5,6 @@ import numpy as np
 import cv2 as cv
 import time
 
-#@markdown We implemented some functions to visualize the hand landmark detection results. <br/> Run the following cell to activate the functions.
-
 from mediapipe import solutions
 from mediapipe.framework.formats import landmark_pb2
 import numpy as np
