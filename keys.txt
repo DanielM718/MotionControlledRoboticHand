@@ -1,7 +1,0 @@
-0 - Unrecognized gesture, label: Unknown
-1 - Closed fist, label: Closed_Fist
-2 - Open palm, label: Open_Palm
-3 - Pointing up, label: Pointing_Up
-4 - Thumbs down, label: Thumb_Down
-5 - Thumbs up, label: Thumb_Up
-6 - Victory, label: Victory
