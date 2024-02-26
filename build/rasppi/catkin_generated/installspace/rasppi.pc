@@ -1,8 +1,0 @@
-prefix=/home/viki/Desktop/RoboticHand/install
-
-Name: rasppi
-Description: Description of rasppi
-Version: 0.0.0
-Cflags: 
-Libs: -L/home/viki/Desktop/RoboticHand/install/lib 
-Requires: 
