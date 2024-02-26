@@ -1,8 +1,13 @@
 //#include <MPU6050.h>
+#include "BluetoothSerial.h"
 
 #include "I2Cdev.h"
 
 #include "MPU6050_6Axis_MotionApps20.h"
+
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#endif
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
@@ -19,6 +24,7 @@ MPU6050 mpu2(0x69);
 #define INTERRUPT_PIN 19  // use pin 2 on Arduino Uno & most boards
 
 #define LED_PIN 13 
+
 bool blinkState = false;
 
 // MPU control/status vars
@@ -40,6 +46,8 @@ VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
+float BTPackage[12]      // [yaw, pitch, roll, psi, theta, phi]-repeat  data sent over BT
+
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
@@ -50,6 +58,7 @@ void dmpDataReady() {
 }
 
 
+BluetoothSerial SerialBt;
 
 // ================================================================
 // ===                      INITIAL SETUP                       ===
@@ -154,6 +163,9 @@ void setup() {
       Serial.println(F(")"));
   }
 
+  delay(1000)
+  SerialBT.begin("ESP32"); //Bluetooth device name
+
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
 }
@@ -191,6 +203,10 @@ void loop() {
       Serial.print(euler[1] * 180/M_PI);
       Serial.print("\t");
       Serial.println(euler[2] * 180/M_PI);
+
+      BTPackage[3] = euler[0] * 180/M_PI;
+      BTPackage[4] = euler[1] * 180/M_PI;
+      BTPackage[5] = euler[2] * 180/M_PI;
     #endif
 
     #ifdef OUTPUT_READABLE_YAWPITCHROLL
@@ -204,6 +220,10 @@ void loop() {
       Serial.print(ypr[1] * 180/M_PI);
       Serial.print("\t");
       Serial.println(ypr[2] * 180/M_PI);
+
+      BTPackage[0] = ypr[0] * 180/M_PI;
+      BTPackage[1] = ypr[1] * 180/M_PI;
+      BTPackage[2] = ypr[2] * 180/M_PI;
     #endif
 
     #ifdef OUTPUT_READABLE_REALACCEL
@@ -248,6 +268,10 @@ void loop() {
       Serial.print(euler[1] * 180/M_PI);
       Serial.print("\t");
       Serial.println(euler[2] * 180/M_PI);
+
+      BTPackage[9] = euler[0] * 180/M_PI;
+      BTPackage[10] = euler[1] * 180/M_PI;
+      BTPackage[11] = euler[2] * 180/M_PI;
     #endif
 
     #ifdef OUTPUT_READABLE_YAWPITCHROLL
@@ -261,6 +285,10 @@ void loop() {
       Serial.print(ypr[1] * 180/M_PI);
       Serial.print("\t");
       Serial.println(ypr[2] * 180/M_PI);
+
+      BTPackage[6] = ypr[0] * 180/M_PI;
+      BTPackage[7] = ypr[1] * 180/M_PI;
+      BTPackage[8] = ypr[2] * 180/M_PI;
     #endif
 
     #ifdef OUTPUT_READABLE_REALACCEL
@@ -276,6 +304,10 @@ void loop() {
       Serial.print("\t");
       Serial.println(aaReal.z);
     #endif
+
+    //sends sensor reading packet over Bluetooth
+    SerialBT.println(BTPackage);
+
     // blink LED to indicate activity
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
