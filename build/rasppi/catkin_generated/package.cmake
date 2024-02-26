@@ -1,0 +1,7 @@
+set(_CATKIN_CURRENT_PACKAGE "rasppi")
+set(rasppi_MAINTAINER "viki <viki@todo.todo>")
+set(rasppi_DEPRECATED "")
+set(rasppi_VERSION "0.0.0")
+set(rasppi_BUILD_DEPENDS "roscpp" "rospy" "std_msgs")
+set(rasppi_RUN_DEPENDS "roscpp" "rospy" "std_msgs")
+set(rasppi_BUILDTOOL_DEPENDS "catkin")
