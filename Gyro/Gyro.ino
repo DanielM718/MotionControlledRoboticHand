@@ -1,5 +1,29 @@
-//#include <MPU6050.h>
-#include "BluetoothSerial.h"
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+#include <BLE2902.h>
+
+#define SERVICE_UUID "3e694c3e-9087-4d47-afce-cd08dbde1286"
+#define CHARACTERISTIC_UUID "c122a3d6-8d8a-4b89-b21f-4d91a260aeee"
+#define CHARACTERISTIC_UUID2 "bcd9f8bf-b4da-4301-9c38-20fe24e9efe7"
+
+bool deviceConnected = false;
+// IMU data
+BLECharacteristic imuCharacteristics(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_NOTIFY);
+BLEDescriptor imuDescriptor(BLEUUID((uint16_t)0x2902));
+// IMU identity
+BLECharacteristic identityCharacteristics(CHARACTERISTIC_UUID2, BLECharacteristic::PROPERTY_NOTIFY);
+BLEDescriptor idenityDescriptor(BLEUUID((uint16_t)0x2901));
+
+//Setup callbacks onConnect and onDisconnect
+class ServerCallbacks: public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    deviceConnected = true;
+  };
+  void onDisconnect(BLEServer* pServer) {
+    deviceConnected = false;
+  }
+};
 
 #include "I2Cdev.h"
 
@@ -46,7 +70,7 @@ VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
-float BTPackage[12]      // [yaw, pitch, roll, psi, theta, phi]-repeat  data sent over BT
+int DataID;
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
@@ -58,8 +82,6 @@ void dmpDataReady() {
 }
 
 
-BluetoothSerial SerialBt;
-
 // ================================================================
 // ===                      INITIAL SETUP                       ===
 // ================================================================
@@ -69,8 +91,32 @@ void setup() {
   Serial.begin(115200);
   while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
-   // Pause for 2 seconds
-  // Clear the buffer
+  // Create the BLE Device
+  BLEDevice::init("IMUESP32");
+  // sets the devices as a BLE server with the UUID
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new ServerCallbacks());
+
+  // creating the BLE service
+  BLEService *imuService = pServer->createService(SERVICE_UUID);
+
+  // this defines the characteristics of the BLE service
+  imuService->addCharacteristic(&imuCharacteristics);
+  imuDescriptor.setValue("IMU sensor readings");
+  imuCharacteristics.addDescriptor(&imuDescriptor);
+
+  imuService->addCharacteristic(&identityCharacteristics);
+  idenityDescriptor.setValue("IMU identity");
+  identityCharacteristics.addDescriptor(&idenityDescriptor);
+
+  // starts the service
+  imuService->start();
+
+  // starts advertising service
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pServer->getAdvertising()->start();
+  Serial.println("Waiting a client connection to notify...");
 
   delay(5000);
   // join I2C bus (I2Cdev library doesn't do this automatically)
@@ -163,9 +209,6 @@ void setup() {
       Serial.println(F(")"));
   }
 
-  delay(1000)
-  SerialBT.begin("ESP32"); //Bluetooth device name
-
   // configure LED for output
   pinMode(LED_PIN, OUTPUT);
 }
@@ -177,36 +220,38 @@ void setup() {
 void loop() {
   // if programming failed, don't try to do anything
   if (!dmpReady) return;
-  // read a packet from FIFO
-  if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-    return;
-    #ifdef OUTPUT_READABLE_QUATERNION
-      // display quaternion values in easy matrix form: w x y z
-      mpu.dmpGetQuaternion(&q, fifoBuffer);
-      Serial.print("quat\t");
-      Serial.print(q.w);
-      Serial.print("\t");
-      Serial.print(q.x);
-      Serial.print("\t");
-      Serial.print(q.y);
-      Serial.print("\t");
-      Serial.println(q.z);
-    #endif
-
+  // read a packet from FIFO & checks BLE connection
+  if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer) && deviceConnected) { // Get the Latest packet 
     #ifdef OUTPUT_READABLE_EULER
       // display Euler angles in degrees
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetEuler(euler, &q);
-      Serial.print("euler\t");
-      Serial.print(euler[0] * 180/M_PI);
-      Serial.print("\t");
-      Serial.print(euler[1] * 180/M_PI);
-      Serial.print("\t");
-      Serial.println(euler[2] * 180/M_PI);
+      Serial.println("euler\t");
+      
+      DataID = 11;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[0] *= 180/M_PI;
+      //Serial.print(euler[0]);
+      imuCharacteristics.setValue(euler[0]);
+      imuCharacteristics.notify();
 
-      BTPackage[3] = euler[0] * 180/M_PI;
-      BTPackage[4] = euler[1] * 180/M_PI;
-      BTPackage[5] = euler[2] * 180/M_PI;
+      DataID = 12;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[1] *= 180/M_PI;
+      //Serial.print(euler[1]);
+      imuCharacteristics.setValue(euler[1]);
+      imuCharacteristics.notify();
+
+      DataID = 13;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[2] *= 180/M_PI;
+      //Serial.print(euler[2]);
+      imuCharacteristics.setValue(euler[2]);
+      imuCharacteristics.notify();
+
     #endif
 
     #ifdef OUTPUT_READABLE_YAWPITCHROLL
@@ -214,30 +259,32 @@ void loop() {
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-      Serial.print("ypr\t");
-      Serial.print(ypr[0] * 180/M_PI);
-      Serial.print("\t");
-      Serial.print(ypr[1] * 180/M_PI);
-      Serial.print("\t");
-      Serial.println(ypr[2] * 180/M_PI);
+      Serial.println("ypr\t");
+      DataID = 14;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      ypr[0] *= 180/M_PI;
+      //Serial.print(ypr[0]);
+      imuCharacteristics.setValue(ypr[0]);
+      imuCharacteristics.notify();
 
-      BTPackage[0] = ypr[0] * 180/M_PI;
-      BTPackage[1] = ypr[1] * 180/M_PI;
-      BTPackage[2] = ypr[2] * 180/M_PI;
-    #endif
+      DataID = 15;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[1] *= 180/M_PI;
+      //Serial.print(ypr[1]);
+      imuCharacteristics.setValue(ypr[1]);
+      imuCharacteristics.notify();
 
-    #ifdef OUTPUT_READABLE_REALACCEL
-      // display real acceleration, adjusted to remove gravity
-      mpu.dmpGetQuaternion(&q, fifoBuffer);
-      mpu.dmpGetAccel(&aa, fifoBuffer);
-      mpu.dmpGetGravity(&gravity, &q);
-      mpu.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-      Serial.print("areal\t");
-      Serial.print(aaReal.x);
-      Serial.print("\t");
-      Serial.print(aaReal.y);
-      Serial.print("\t");
-      Serial.println(aaReal.z);
+      DataID = 16;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[2] *= 180/M_PI;
+      //Serial.print(ypr[2]);
+      imuCharacteristics.setValue(ypr[2]);
+      imuCharacteristics.notify();
+
+
     #endif
     // blink LED to indicate activity
     blinkState = !blinkState;
@@ -245,33 +292,36 @@ void loop() {
   }
 
   if (mpu2.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-    #ifdef OUTPUT_READABLE_QUATERNION
-      // display quaternion values in easy matrix form: w x y z
-      mpu2.dmpGetQuaternion(&q, fifoBuffer);
-      Serial.print("quat2\t");
-      Serial.print(q.w);
-      Serial.print("\t");
-      Serial.print(q.x);
-      Serial.print("\t");
-      Serial.print(q.y);
-      Serial.print("\t");
-      Serial.println(q.z);
-    #endif
-
     #ifdef OUTPUT_READABLE_EULER
       // display Euler angles in degrees
       mpu2.dmpGetQuaternion(&q, fifoBuffer);
       mpu2.dmpGetEuler(euler, &q);
-      Serial.print("euler2\t");
-      Serial.print(euler[0] * 180/M_PI);
-      Serial.print("\t");
-      Serial.print(euler[1] * 180/M_PI);
-      Serial.print("\t");
-      Serial.println(euler[2] * 180/M_PI);
+      Serial.println("euler2\t");
+      DataID = 21;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[0] *= 180/M_PI;
+      //Serial.print(euler[0]);
+      imuCharacteristics.setValue(euler[0]);
+      imuCharacteristics.notify();
 
-      BTPackage[9] = euler[0] * 180/M_PI;
-      BTPackage[10] = euler[1] * 180/M_PI;
-      BTPackage[11] = euler[2] * 180/M_PI;
+      DataID = 22;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[1] *= 180/M_PI;
+      //Serial.print(euler[1]);
+      imuCharacteristics.setValue(euler[1]);
+      imuCharacteristics.notify();
+
+      DataID = 23;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[2] *= 180/M_PI;
+      //Serial.print(euler[2]);
+      imuCharacteristics.setValue(euler[2]);
+      imuCharacteristics.notify();
+
+
     #endif
 
     #ifdef OUTPUT_READABLE_YAWPITCHROLL
@@ -279,34 +329,33 @@ void loop() {
       mpu2.dmpGetQuaternion(&q, fifoBuffer);
       mpu2.dmpGetGravity(&gravity, &q);
       mpu2.dmpGetYawPitchRoll(ypr, &q, &gravity);
-      Serial.print("ypr2\t");
-      Serial.print(ypr[0] * 180/M_PI);
-      Serial.print("\t");
-      Serial.print(ypr[1] * 180/M_PI);
-      Serial.print("\t");
-      Serial.println(ypr[2] * 180/M_PI);
+      Serial.println("ypr2\t");
+      DataID = 24;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      ypr[0] *= 180/M_PI;
+      //Serial.print(ypr[0]);
+      imuCharacteristics.setValue(ypr[0]);
+      imuCharacteristics.notify();
 
-      BTPackage[6] = ypr[0] * 180/M_PI;
-      BTPackage[7] = ypr[1] * 180/M_PI;
-      BTPackage[8] = ypr[2] * 180/M_PI;
+      DataID = 25;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[1] *= 180/M_PI;
+      //Serial.print(ypr[1]);
+      imuCharacteristics.setValue(ypr[1]);
+      imuCharacteristics.notify();
+
+      DataID = 26;
+      identityCharacteristics.setValue(DataID);
+      identityCharacteristics.notify();
+      euler[2] *= 180/M_PI;
+      //Serial.print(ypr[2]);
+      imuCharacteristics.setValue(ypr[2]);
+      imuCharacteristics.notify();
+
+
     #endif
-
-    #ifdef OUTPUT_READABLE_REALACCEL
-      // display real acceleration, adjusted to remove gravity
-      mpu2.dmpGetQuaternion(&q, fifoBuffer);
-      mpu2.dmpGetAccel(&aa, fifoBuffer);
-      mpu2.dmpGetGravity(&gravity, &q);
-      mpu2.dmpGetLinearAccel(&aaReal, &aa, &gravity);
-      Serial.print("areal2\t");
-      Serial.print(aaReal.x);
-      Serial.print("\t");
-      Serial.print(aaReal.y);
-      Serial.print("\t");
-      Serial.println(aaReal.z);
-    #endif
-
-    //sends sensor reading packet over Bluetooth
-    SerialBT.println(BTPackage);
 
     // blink LED to indicate activity
     blinkState = !blinkState;
