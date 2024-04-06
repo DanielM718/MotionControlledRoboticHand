@@ -7,16 +7,22 @@
 #define CHARACTERISTIC_UUID "c122a3d6-8d8a-4b89-b21f-4d91a260aeee"
 #define CHARACTERISTIC_UUID2 "bcd9f8bf-b4da-4301-9c38-20fe24e9efe7"
 
+BLEServer* pServer = NULL;
+BLECharacteristic* imuID = NULL;
+BLECharacteristic* imuData = NULL;
 bool deviceConnected = false;
+bool oldDeviceConnected = false;
+uint32_t value = 0;
+
 // IMU data
-BLECharacteristic imuCharacteristics(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_NOTIFY);
-BLEDescriptor imuDescriptor(BLEUUID((uint16_t)0x2902));
+//BLECharacteristic imuCharacteristics(CHARACTERISTIC_UUID, BLECharacteristic::PROPERTY_NOTIFY);
+//BLEDescriptor imuDescriptor(BLEUUID((uint16_t)0x2902));
 // IMU identity
-BLECharacteristic identityCharacteristics(CHARACTERISTIC_UUID2, BLECharacteristic::PROPERTY_NOTIFY);
-BLEDescriptor idenityDescriptor(BLEUUID((uint16_t)0x2901));
+//BLECharacteristic identitiyCharacteristics(CHARACTERISTIC_UUID2, BLECharacteristic::PROPERTY_NOTIFY);
+//BLEDescriptor idenityDescriptor(BLEUUID((uint16_t)0x2901));
 
 //Setup callbacks onConnect and onDisconnect
-class ServerCallbacks: public BLEServerCallbacks {
+class MyServerCallbacks: public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) {
     deviceConnected = true;
   };
@@ -94,28 +100,49 @@ void setup() {
   // Create the BLE Device
   BLEDevice::init("IMUESP32");
   // sets the devices as a BLE server with the UUID
-  BLEServer *pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
 
   // creating the BLE service
-  BLEService *imuService = pServer->createService(SERVICE_UUID);
+  BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // this defines the characteristics of the BLE service
-  imuService->addCharacteristic(&imuCharacteristics);
-  imuDescriptor.setValue("IMU sensor readings");
-  imuCharacteristics.addDescriptor(&imuDescriptor);
+  // this defines the characteristics in the BLE service
+  imuData = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_READ   |
+    BLECharacteristic::PROPERTY_WRITE  |
+    BLECharacteristic::PROPERTY_NOTIFY |
+    BLECharacteristic::PROPERTY_INDICATE
+  );
 
-  imuService->addCharacteristic(&identityCharacteristics);
-  idenityDescriptor.setValue("IMU identity");
-  identityCharacteristics.addDescriptor(&idenityDescriptor);
+  imuID = pService->createCharacteristic(
+    CHARACTERISTIC_UUID2,
+    BLECharacteristic::PROPERTY_READ   |
+    BLECharacteristic::PROPERTY_WRITE  |
+    BLECharacteristic::PROPERTY_NOTIFY |
+    BLECharacteristic::PROPERTY_INDICATE
+  );
+
+  //pService->addCharacteristic(&imuData);
+  //pDescriptor.setValue("IMU sensor readings");
+  //pCharacteristics.addDescriptor(&imuDescriptor);
+
+  //pService->addCharacteristic(&imuID);
+  //idenityDescriptor.setValue("IMU identity");
+  //imuID.addDescriptor(&idenityDescriptor);
+
+  imuData->addDescriptor(new BLE2902());
+  imuID->addDescriptor(new BLE2902());
 
   // starts the service
-  imuService->start();
+  pService->start();
 
   // starts advertising service
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
-  pServer->getAdvertising()->start();
+  pAdvertising->setScanResponse(false);
+  pAdvertising->setMinPreferred(0x0);  // set value to 0x00 to not advertise this parameter
+  BLEDevice::startAdvertising();
   Serial.println("Waiting a client connection to notify...");
 
   delay(5000);
@@ -222,35 +249,35 @@ void loop() {
   if (!dmpReady) return;
   // read a packet from FIFO & checks BLE connection
   if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer) && deviceConnected) { // Get the Latest packet 
+    Serial.println("Device Connected");
     #ifdef OUTPUT_READABLE_EULER
       // display Euler angles in degrees
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetEuler(euler, &q);
-      Serial.println("euler\t");
       
       DataID = 11;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[0] *= 180/M_PI;
       //Serial.print(euler[0]);
-      imuCharacteristics.setValue(euler[0]);
-      imuCharacteristics.notify();
+      imuData->setValue(euler[0]);
+      imuData->notify();
 
       DataID = 12;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[1] *= 180/M_PI;
       //Serial.print(euler[1]);
-      imuCharacteristics.setValue(euler[1]);
-      imuCharacteristics.notify();
+      imuData->setValue(euler[1]);
+      imuData->notify();
 
       DataID = 13;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[2] *= 180/M_PI;
       //Serial.print(euler[2]);
-      imuCharacteristics.setValue(euler[2]);
-      imuCharacteristics.notify();
+      imuData->setValue(euler[2]);
+      imuData->notify();
 
     #endif
 
@@ -259,30 +286,29 @@ void loop() {
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-      Serial.println("ypr\t");
       DataID = 14;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       ypr[0] *= 180/M_PI;
       //Serial.print(ypr[0]);
-      imuCharacteristics.setValue(ypr[0]);
-      imuCharacteristics.notify();
+      imuData->setValue(ypr[0]);
+      imuData->notify();
 
       DataID = 15;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[1] *= 180/M_PI;
       //Serial.print(ypr[1]);
-      imuCharacteristics.setValue(ypr[1]);
-      imuCharacteristics.notify();
+      imuData->setValue(ypr[1]);
+      imuData->notify();
 
       DataID = 16;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[2] *= 180/M_PI;
       //Serial.print(ypr[2]);
-      imuCharacteristics.setValue(ypr[2]);
-      imuCharacteristics.notify();
+      imuData->setValue(ypr[2]);
+      imuData->notify();
 
 
     #endif
@@ -291,35 +317,34 @@ void loop() {
     digitalWrite(LED_PIN, blinkState);
   }
 
-  if (mpu2.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
+  if (mpu2.dmpGetCurrentFIFOPacket(fifoBuffer) && deviceConnected) { // Get the Latest packet 
     #ifdef OUTPUT_READABLE_EULER
       // display Euler angles in degrees
       mpu2.dmpGetQuaternion(&q, fifoBuffer);
       mpu2.dmpGetEuler(euler, &q);
-      Serial.println("euler2\t");
       DataID = 21;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[0] *= 180/M_PI;
       //Serial.print(euler[0]);
-      imuCharacteristics.setValue(euler[0]);
-      imuCharacteristics.notify();
+      imuData->setValue(euler[0]);
+      imuData->notify();
 
       DataID = 22;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[1] *= 180/M_PI;
       //Serial.print(euler[1]);
-      imuCharacteristics.setValue(euler[1]);
-      imuCharacteristics.notify();
+      imuData->setValue(euler[1]);
+      imuData->notify();
 
       DataID = 23;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[2] *= 180/M_PI;
       //Serial.print(euler[2]);
-      imuCharacteristics.setValue(euler[2]);
-      imuCharacteristics.notify();
+      imuData->setValue(euler[2]);
+      imuData->notify();
 
 
     #endif
@@ -329,34 +354,44 @@ void loop() {
       mpu2.dmpGetQuaternion(&q, fifoBuffer);
       mpu2.dmpGetGravity(&gravity, &q);
       mpu2.dmpGetYawPitchRoll(ypr, &q, &gravity);
-      Serial.println("ypr2\t");
       DataID = 24;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       ypr[0] *= 180/M_PI;
       //Serial.print(ypr[0]);
-      imuCharacteristics.setValue(ypr[0]);
-      imuCharacteristics.notify();
+      imuData->setValue(ypr[0]);
+      imuData->notify();
 
       DataID = 25;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[1] *= 180/M_PI;
       //Serial.print(ypr[1]);
-      imuCharacteristics.setValue(ypr[1]);
-      imuCharacteristics.notify();
+      imuData->setValue(ypr[1]);
+      imuData->notify();
 
       DataID = 26;
-      identityCharacteristics.setValue(DataID);
-      identityCharacteristics.notify();
+      imuID->setValue(DataID);
+      imuID->notify();
       euler[2] *= 180/M_PI;
       //Serial.print(ypr[2]);
-      imuCharacteristics.setValue(ypr[2]);
-      imuCharacteristics.notify();
+      imuData->setValue(ypr[2]);
+      imuData->notify();
 
 
     #endif
 
+      if (!deviceConnected && oldDeviceConnected) {
+      delay(500); // give the bluetooth stack the chance to get things ready
+      pServer->startAdvertising(); // restart advertising
+      Serial.println("start advertising");
+      oldDeviceConnected = deviceConnected;
+    }
+    // connecting
+    if (deviceConnected && !oldDeviceConnected) {
+        // do stuff here on connecting
+        oldDeviceConnected = deviceConnected;
+    }
     // blink LED to indicate activity
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
