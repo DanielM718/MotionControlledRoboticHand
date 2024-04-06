@@ -1,3 +1,4 @@
 coral/
 edgetpu_runtime/
 Model/
+*.DS_Store
