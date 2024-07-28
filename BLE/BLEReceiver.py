@@ -1,5 +1,4 @@
 import asyncio
-from bleak import BleakClient
 
 from bleak import BleakClient, BleakScanner
 from bleak.backends.characteristic import BleakGATTCharacteristic
